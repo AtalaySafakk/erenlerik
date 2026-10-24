@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Ayar {
+  id                Int    @id @default(1)
+  firmaAdi          String @default("İK Program")
+  resmiUcret        Float  @default(28075.50)
+  normalAylikSaat   Float  @default(180)
+  tamAyGun          Float  @default(26)
+  mesaiCarpan       Float  @default(1.5)
+  mesaiCarpanTatil  Float  @default(2)
+  varsayilanGunSaat Float  @default(7.5)
+  varsayilanGiris   String @default("08:00")
+  varsayilanCikis   String @default("16:30")
+  molaSaat          Float  @default(1)
+  resmiTatiller     String @default("2026-01-01,2026-03-20,2026-03-21,2026-03-22,2026-04-23,2026-05-01,2026-05-19,2026-05-27,2026-05-28,2026-05-29,2026-07-15,2026-08-30,2026-10-29")
+}
+
+model Kullanici {
+  id           Int     @id @default(autoincrement())
+  ad           String
+  kullaniciAdi String  @unique
+  sifre        String
+  rol          String  @default("MUHASEBE")
+  aktif        Boolean @default(true)
+}
+
+model GorevYeri {
+  id              Int        @id @default(autoincrement())
+  ad              String     @unique
+  varsayilanGiris String     @default("")
+  varsayilanCikis String     @default("")
+  molaSaat        Float      @default(0)
+  personel        Personel[]
+}
+
+model Personel {
+  id                 Int       @id @default(autoincrement())
+  adi                String
+  soyadi             String
+  gorevYeriId        Int
+  gorevYeri          GorevYeri @relation(fields: [gorevYeriId], references: [id])
+  cinsiyet           String    @default("BAY")
+  gorevi             String    @default("")
+  tcKimlik           String    @default("")
+  icraDurum          String    @default("ICRAYOK")
+  hesapNo            String    @default("")
+  iseBaslamaTarihi   String    @default("")
+  dogumTarihi        String    @default("")
+  netMaas            Float     @default(0)
+  resmiMaas          Float     @default(28075.50)
+  ekOdeme            Float     @default(0)
+  yemek              Float     @default(0)
+  yol                Float     @default(0)
+  prim               Float     @default(0)
+  yemekHedef         String    @default("ELDEN")
+  yolHedef           String    @default("ELDEN")
+  primHedef          String    @default("ELDEN")
+  besDurum           String    @default("YOK")
+  besKesinti         Float     @default(0)
+  otomKatilimBedeli  Float     @default(0)
+  durum              String    @default("AKTIF")
+  istenAyrilisTarihi String    @default("")
+  denemeBitis        String    @default("")
+  sozlesmeBitis      String    @default("")
+  yillikIzinHakki    Int       @default(14)
+  adres              String    @default("")
+  sskIsyeriNo        String    @default("")
+  gsm                String    @default("")
+  medeniDurum        String    @default("")
+  cocukSayisi        Int       @default(0)
+  createdAt          DateTime  @default(now())
+
+  puantajlar Puantaj[]
+  izinler    Izin[]
+  icralar    Icra[]
+  avanslar   Avans[]
+  bordrolar  Bordro[]
+  belgeler   Belge[]
+}
+
+model Puantaj {
+  id         Int          @id @default(autoincrement())
+  personelId Int
+  personel   Personel     @relation(fields: [personelId], references: [id], onDelete: Cascade)
+  yil        Int
+  ay         Int
+  notlar     String       @default("")
+  gunler     PuantajGun[]
+
+  @@unique([personelId, yil, ay])
+}
+
+model PuantajGun {
+  id        Int     @id @default(autoincrement())
+  puantajId Int
+  puantaj   Puantaj @relation(fields: [puantajId], references: [id], onDelete: Cascade)
+  gun       Int
+  saat      Float   @default(0)
+  giris     String  @default("")
+  cikis     String  @default("")
+  kod       String  @default("B")
+  kaynak    String  @default("MANUEL")
+
+  @@unique([puantajId, gun])
+}
+
+model Izin {
+  id         Int      @id @default(autoincrement())
+  personelId Int
+  personel   Personel @relation(fields: [personelId], references: [id], onDelete: Cascade)
+  tip        String
+  baslangic  String
+  bitis      String
+  gun        Float
+  aciklama   String   @default("")
+  durum      String   @default("ONAYLANDI")
+}
+
+model Icra {
+  id           Int         @id @default(autoincrement())
+  personelId   Int
+  personel     Personel    @relation(fields: [personelId], references: [id], onDelete: Cascade)
+  dosyaNo      String      @default("")
+  alacakli     String      @default("")
+  tutar        Float       @default(0)
+  kesinti      Float       @default(0)
+  kesintiTip   String      @default("TUTAR")
+  kesintiYuzde Float       @default(0)
+  odenen       Float       @default(0)
+  baslangic    String      @default("")
+  bitis        String      @default("")
+  aktif        Boolean     @default(true)
+  donemler     IcraDonem[]
+}
+
+model IcraDonem {
+  id     Int  @id @default(autoincrement())
+  icraId Int
+  icra   Icra @relation(fields: [icraId], references: [id], onDelete: Cascade)
+  yil    Int
+  ay     Int
+  tutar  Float
+
+  @@unique([icraId, yil, ay])
+}
+
+model Avans {
+  id         Int      @id @default(autoincrement())
+  personelId Int
+  personel   Personel @relation(fields: [personelId], references: [id], onDelete: Cascade)
+  yil        Int
+  ay         Int
+  tutar      Float
+  aciklama   String   @default("")
+  tarih      String
+}
+
+model Bordro {
+  id              Int      @id @default(autoincrement())
+  personelId      Int
+  personel        Personel @relation(fields: [personelId], references: [id], onDelete: Cascade)
+  yil             Int
+  ay              Int
+  calismaGun      Float
+  calismaSaat     Float
+  fazlaMesaiSaat  Float
+  tatilMesaiSaat  Float    @default(0)
+  netMaas         Float
+  resmiUcret      Float
+  mesaiTutari     Float
+  ekOdeme         Float
+  yemek           Float    @default(0)
+  yol             Float    @default(0)
+  prim            Float    @default(0)
+  avans           Float
+  otomKatilim     Float
+  icraKesinti     Float
+  besKesinti      Float    @default(0)
+  eksikOran       Float    @default(1)
+  bankayaYatacak  Float
+  eldenOdenecek   Float
+  eldenOdendi     Boolean  @default(false)
+  eldenImza       Boolean  @default(false)
+  eldenOdemeTarihi String  @default("")
+
+  @@unique([personelId, yil, ay])
+}
+
+model Belge {
+  id         Int      @id @default(autoincrement())
+  personelId Int
+  personel   Personel @relation(fields: [personelId], references: [id], onDelete: Cascade)
+  tip        String   @default("DIGER")
+  ad         String
+  yol        String
+  createdAt  DateTime @default(now())
+}

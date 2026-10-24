@@ -1,69 +1,145 @@
-import Image from "next/image";
+import Link from "next/link";
+import { PageHead } from "@/components/page-head";
+import { prisma } from "@/lib/prisma";
+import { AYLAR, paraTl } from "@/lib/format";
+import { muhasebeMi, oturumGetir } from "@/lib/auth";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const simdi = new Date();
+  const yil = simdi.getFullYear();
+  const ay = simdi.getMonth() + 1;
+
+  const oturum = await oturumGetir();
+  const [personelSayisi, icraSayisi, puantajSayisi, bordrolar, ayar] = await Promise.all([
+    prisma.personel.count({ where: { durum: { not: "PASIF" } } }),
+    prisma.icra.count({ where: { aktif: true } }),
+    prisma.puantaj.count({ where: { yil, ay } }),
+    prisma.bordro.findMany({ where: { yil, ay } }),
+    prisma.ayar.findUnique({ where: { id: 1 } }),
+  ]);
+
+  const personeller = await prisma.personel.findMany({
+    include: { izinler: true, puantajlar: { where: { yil, ay }, include: { gunler: true } } },
+  });
+  const kalanIzin = personeller.reduce((t, p) => {
+    const kullanilan = p.izinler
+      .filter((i) => i.tip === "YILLIK" && i.durum === "ONAYLANDI")
+      .reduce((x, i) => x + i.gun, 0);
+    return t + Math.max(0, p.yillikIzinHakki - kullanilan);
+  }, 0);
+
+  const bankaya = bordrolar.reduce((t, b) => t + b.bankayaYatacak, 0);
+  const elden = bordrolar.reduce((t, b) => t + b.eldenOdenecek, 0);
+  const bugun = simdi.toISOString().slice(0, 10);
+  const sinir = new Date(simdi);
+  sinir.setDate(sinir.getDate() + 30);
+  const sinirStr = sinir.toISOString().slice(0, 10);
+  const alarmlar = personeller
+    .filter((p) => p.durum !== "PASIF")
+    .flatMap((p) => {
+      const liste: string[] = [];
+      if (p.denemeBitis && p.denemeBitis >= bugun && p.denemeBitis <= sinirStr) {
+        liste.push(`${p.adi} ${p.soyadi} · deneme ${p.denemeBitis}`);
+      }
+      if (p.sozlesmeBitis && p.sozlesmeBitis >= bugun && p.sozlesmeBitis <= sinirStr) {
+        liste.push(`${p.adi} ${p.soyadi} · sözleşme ${p.sozlesmeBitis}`);
+      }
+      const eksikSaat = (p.puantajlar[0]?.gunler ?? []).filter((g) => g.kod === "C" && (!g.giris || !g.cikis));
+      if (eksikSaat.length) liste.push(`${p.adi} ${p.soyadi} · ${eksikSaat.length} gün eksik giriş-çıkış`);
+      return liste;
+    });
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div>
+      <PageHead
+        kicker="Özet"
+        title="Personel defteri"
+        desc="Görev yeri esaslı puantaj, yıllık izin, icra ve mazeret/rapor takibi. Resmi bodro bankaya, fark ve fazla mesai elden."
+      />
+      {alarmlar.length ? (
+        <div className="sheet mb-5 rounded-2xl p-4">
+          <p className="mb-2 text-xs font-bold tracking-[0.14em] text-brass uppercase">Alarmlar (30 gün)</p>
+          <ul className="space-y-1 text-sm">
+            {alarmlar.slice(0, 8).map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="mb-6 grid gap-4 md:grid-cols-4">
+        <Kart etiket="Aktif personel" deger={String(personelSayisi)} />
+        <Kart etiket={`${AYLAR[ay - 1]} puantaj`} deger={String(puantajSayisi)} />
+        <Kart etiket="Açık icra" deger={String(icraSayisi)} />
+        <Kart etiket="Kalan izin günü" deger={String(kalanIzin)} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <section className="sheet rounded-2xl p-5 lg:col-span-2">
+          <h2 className="font-serif text-2xl">Bu ay ödeme özeti</h2>
+          <p className="mt-1 text-sm text-ink-soft/70">
+            {AYLAR[ay - 1]} {yil} · resmi taban {paraTl(ayar?.resmiUcret ?? 28075.5)} · 180 saat üzeri mesai
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-paper p-4">
+              <p className="text-xs font-bold tracking-[0.14em] text-ink-soft uppercase">Bankaya yatacak</p>
+              <p className="mt-2 font-serif text-3xl">{paraTl(bankaya)}</p>
+            </div>
+            <div className="rounded-xl bg-paper p-4">
+              <p className="text-xs font-bold tracking-[0.14em] text-ink-soft uppercase">Elden ödenecek</p>
+              <p className="mt-2 font-serif text-3xl">{paraTl(elden)}</p>
+            </div>
+          </div>
+          <p className="mt-4 text-sm leading-6 text-ink-soft/80">
+            Örnek: net 40.000, resmi 30.000. Bankaya 30.000. Elden 10.000 + (15 saat × 30.000 / 180 × 1,5).
+          </p>
+        </section>
+
+        <section className="sheet rounded-2xl p-5">
+          <h2 className="font-serif text-2xl">Hızlı iş</h2>
+          <div className="mt-4 flex flex-col gap-2">
+            <Link className="btn btn-brass" href="/puantaj">
+              Puantajı aç
+            </Link>
+            <Link className="btn btn-ghost" href="/giris-cikis">
+              Giriş-çıkış
+            </Link>
+            {muhasebeMi(oturum?.rol) ? (
+              <>
+                <Link className="btn btn-primary" href="/bordro">
+                  Bordro hesapla
+                </Link>
+                <Link className="btn btn-ghost" href="/kasa">
+                  Elden kasa
+                </Link>
+                <Link className="btn btn-ghost" href="/avans">
+                  Avans
+                </Link>
+                <Link className="btn btn-ghost" href="/raporlar">
+                  Excel raporlar
+                </Link>
+              </>
+            ) : null}
+            <Link className="btn btn-ghost" href="/personel/yeni">
+              Yeni personel
+            </Link>
+            <Link className="btn btn-ghost" href="/personel/ice-aktar">
+              Excel içe aktar
+            </Link>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function Kart({ etiket, deger }: { etiket: string; deger: string }) {
+  return (
+    <div className="sheet rounded-2xl p-5">
+      <p className="text-xs font-bold tracking-[0.14em] text-ink-soft uppercase">{etiket}</p>
+      <p className="mt-2 font-serif text-4xl">{deger}</p>
     </div>
   );
 }
